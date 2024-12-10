@@ -486,11 +486,12 @@ Pages read: ${this.getNfcPageCount()}`;
             this.writeNDEFMessage(ndefMessage);
         }
 
-        writeNDEFMessage(ndefMessage) {
+        writeNDEFMessage(ndefMessages) {
             let pageIndex = 4;
             let byteIndex = 0;
-            for (let i = 0; i < ndefMessage.length; i++) {
-                this.nfcPages[pageIndex][byteIndex] = ndefMessage[i];
+        
+            for (let i = 0; i < ndefMessages.length; i++) {
+                this.nfcPages[pageIndex][byteIndex] = ndefMessages[i];
                 byteIndex++;
                 if (byteIndex === 4) {
                     byteIndex = 0;
@@ -500,12 +501,14 @@ Pages read: ${this.getNfcPageCount()}`;
                     }
                 }
             }
+        
             // Fill the rest of the last page with zeros if necessary
             while (byteIndex < 4) {
                 this.nfcPages[pageIndex][byteIndex] = 0x00;
                 byteIndex++;
             }
         }
+        
         generatePages() {
             return this.nfcPages
                 .map(
@@ -588,6 +591,40 @@ Pages read: ${this.getNfcPageCount()}`;
             const pages = this.generatePages();
             return header + '\n' + pages + '\nFailed authentication attempts: 0\n';
         }
+        combineNDEFRecords(records) {
+            let combinedPayload = [];
+            records.forEach((record, index) => {
+                if (index === 0) {
+                    // First record, set MB (Message Begin) flag
+                    record[0] |= 0x80; // MB=1
+                }
+                if (index === records.length - 1) {
+                    // Last record, set ME (Message End) flag
+                    record[0] |= 0x40; // ME=1
+                }
+                combinedPayload = [...combinedPayload, ...record];
+            });
+        
+            // Add TLV wrapping for the entire NDEF message
+            let totalLength = combinedPayload.length;
+            if (totalLength < 255) {
+                return [0x03, totalLength, ...combinedPayload, 0xFE];
+            } else {
+                return [
+                    0x03,
+                    0xFF,
+                    (totalLength >> 8) & 0xFF,
+                    totalLength & 0xFF,
+                    ...combinedPayload,
+                    0xFE,
+                ];
+            }
+        }
+        generateMultiNDEFData(ndefRecords) {
+            const combinedNDEF = this.combineNDEFRecords(ndefRecords);
+            this.writeNDEFMessage(combinedNDEF);
+        }
+        
     }
 
     function generateNFCData() {
@@ -721,6 +758,43 @@ Pages read: ${this.getNfcPageCount()}`;
     
             outputSection.appendChild(buttonGroup);
             outputSection.classList.remove('hidden');
+
+            const addRecordButton = document.getElementById('addRecordButton');
+            const recordList = [];
+            
+            addRecordButton.addEventListener('click', () => {
+                const recordType = tagTypeSelect.value;
+                let inputData = '';
+            
+                if (recordType === 'URL') {
+                    inputData = inputs.urlInput.value.trim();
+                } else if (recordType === 'Text') {
+                    inputData = inputs.textInput.value.trim();
+                }
+                // Add additional record types as needed
+            
+                if (!inputData) {
+                    alert('Please enter data for the record.');
+                    return;
+                }
+            
+                // Generate NDEF record for this input
+                const nfcTag = new nfcNTAG(nfcTagTypeSelect.value);
+                let ndefRecord = [];
+                if (recordType === 'URL') {
+                    ndefRecord = nfcTag.NDEF_URI_URL(inputData);
+                } else if (recordType === 'Text') {
+                    ndefRecord = nfcTag.NDEF_Text(inputData);
+                }
+            
+                recordList.push(ndefRecord);
+            
+                // Update the UI to show added records
+                const recordItem = document.createElement('li');
+                recordItem.textContent = `${recordType}: ${inputData}`;
+                document.getElementById('recordList').appendChild(recordItem);
+            });
+            
     
         } catch (error) {
             alert(error.message);
@@ -860,7 +934,31 @@ Pages read: ${this.getNfcPageCount()}`;
     }
 
     tagTypeSelect.addEventListener('change', showRelevantInputs);
-    generateButton.addEventListener('click', generateNFCData);
+    generateButton.addEventListener('click', () => {
+        try {
+            const nfcTag = new nfcNTAG(nfcTagTypeSelect.value);
+    
+            if (recordList.length === 0) {
+                alert('No records added. Please add at least one record.');
+                return;
+            }
+    
+            nfcTag.generate();
+            nfcTag.generateMultiNDEFData(recordList);
+    
+            const nfcData = nfcTag.exportData();
+            nfcDataOutput.textContent = nfcData;
+    
+            // Display generated data in the UI
+            outputSection.innerHTML = `
+                <h2>Generated NFC Tag Data</h2>
+                <pre>${nfcData}</pre>
+            `;
+        } catch (error) {
+            alert('Error generating NFC tag data: ' + error.message);
+            console.error(error);
+        }
+    });
     downloadButton.addEventListener('click', downloadNFCFile);
 
     showRelevantInputs();
