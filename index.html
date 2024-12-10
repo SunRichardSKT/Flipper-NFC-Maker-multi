@@ -32,7 +32,13 @@
                     <option value="NTAG216">NTAG216</option>
                 </select>
             </div>
-
+            
+            <div id="recordListSection">
+                <h3>Records</h3>
+                <ul id="recordList"></ul>
+                <button id="addRecordButton" class="btn">Add Record</button>
+            </div>
+            
             <div class="input-group">
                 <label for="tagType">Tag Type</label>
                 <select id="tagType">
@@ -163,6 +169,9 @@
             </div>
 
             <button id="generateButton" class="btn">Generate NFC Tag</button>
+
+            <button id="addRecordButton" class="btn">Add Record</button>
+
 
             <div id="outputSection" class="hidden">
                 <h2>Generated NFC Tag Data</h2>
